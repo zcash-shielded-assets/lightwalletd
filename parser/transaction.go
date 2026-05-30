@@ -578,15 +578,19 @@ func (tx *Transaction) parseV5(data []byte) ([]byte, error) {
 	if !s.Skip(192 * spendCount) {
 		return nil, errors.New("could not skip vSpendProofsSapling")
 	}
-	if !s.Skip(64 * spendCount) {
-		return nil, errors.New("could not skip vSpendAuthSigsSapling")
-	}
-	if !s.Skip(192 * outputCount) {
-		return nil, errors.New("could not skip vOutputProofsSapling")
-	}
-	if spendCount+outputCount > 0 && !s.Skip(64) {
-		return nil, errors.New("could not skip bindingSigSapling")
-	}
+		for i := 0; i < spendCount; i++ {
+			if !skipVersionedSignature(&s) {
+				return nil, errors.New("could not skip vSpendAuthSigSapling")
+			}
+		}
+		if !s.Skip(192 * outputCount) {
+			return nil, errors.New("could not skip vOutputProofsSapling")
+		}
+		if spendCount+outputCount > 0 {
+			if !skipVersionedSignature(&s) {
+				return nil, errors.New("could not skip bindingSigSapling")
+			}
+		}
 	var actionsCount int
 	if !s.ReadCompactSize(&actionsCount) {
 		return nil, errors.New("could not read nActionsOrchard")
@@ -651,10 +655,26 @@ func (tx *Transaction) parseV6(data []byte) ([]byte, error) {
 		return nil, errors.New("could not skip nExpiryHeight")
 	}
 
+	// zip233_amount (8 bytes, NU7 field)
+	if !s.Skip(8) {
+		return nil, errors.New("could not skip zip233_amount")
+	}
+
 	// Transparent section (same as v5)
 	s, err = tx.ParseTransparent([]byte(s))
 	if err != nil {
 		return nil, err
+	}
+
+	// v6 transparent sighash_info: one per vin, placed after vouts
+	for range tx.transparentInputs {
+		var sighashLen int
+		if !s.ReadCompactSize(&sighashLen) {
+			return nil, errors.New("could not read transparent sighash info length")
+		}
+		if !s.Skip(sighashLen) {
+			return nil, errors.New("could not skip transparent sighash info")
+		}
 	}
 
 	// Sapling section (same as v5)
@@ -696,15 +716,20 @@ func (tx *Transaction) parseV6(data []byte) ([]byte, error) {
 	if !s.Skip(192 * spendCount) {
 		return nil, errors.New("could not skip vSpendProofsSapling")
 	}
-	if !s.Skip(64 * spendCount) {
-		return nil, errors.New("could not skip vSpendAuthSigsSapling")
-	}
-	if !s.Skip(192 * outputCount) {
-		return nil, errors.New("could not skip vOutputProofsSapling")
-	}
-	if spendCount+outputCount > 0 && !s.Skip(64) {
-		return nil, errors.New("could not skip bindingSigSapling")
-	}
+		// vSpendAuthSigsSapling: versioned signatures (66 bytes each)
+		for i := 0; i < spendCount; i++ {
+			if !skipVersionedSignature(&s) {
+				return nil, errors.New("could not skip vSpendAuthSigSapling")
+			}
+		}
+		if !s.Skip(192 * outputCount) {
+			return nil, errors.New("could not skip vOutputProofsSapling")
+		}
+		if spendCount+outputCount > 0 {
+			if !skipVersionedSignature(&s) {
+				return nil, errors.New("could not skip bindingSigSapling")
+			}
+		}
 
 	// --- v6 Orchard bundle ---
 
@@ -774,9 +799,12 @@ func (tx *Transaction) parseV6(data []byte) ([]byte, error) {
 			return nil, errors.New("could not read vSpendAuthSigsOrchard count")
 		}
 		for i := 0; i < sigCount; i++ {
-			var sigSighashType int
-			if !s.ReadCompactSize(&sigSighashType) {
+			var sigSighashLen int
+			if !s.ReadCompactSize(&sigSighashLen) {
 				return nil, errors.New("could not read spendAuthSig sighash type")
+			}
+			if !s.Skip(sigSighashLen) {
+				return nil, errors.New("could not skip spendAuthSig sighash data")
 			}
 			if !s.Skip(64) {
 				return nil, errors.New("could not skip spendAuthSig")
@@ -789,16 +817,86 @@ func (tx *Transaction) parseV6(data []byte) ([]byte, error) {
 		}
 
 		// 10. bindingSigOrchard (versioned)
-		var bsigSighashType int
-		if !s.ReadCompactSize(&bsigSighashType) {
+		var bsigSighashLen int
+		if !s.ReadCompactSize(&bsigSighashLen) {
 			return nil, errors.New("could not read bindingSig sighash type")
+		}
+		if !s.Skip(bsigSighashLen) {
+			return nil, errors.New("could not skip bindingSig sighash data")
 		}
 		if !s.Skip(64) {
 			return nil, errors.New("could not skip bindingSigOrchard")
 		}
 	}
 
+	// --- v6 Issue bundle (NU7) ---
+	s, err = tx.skipIssueBundle([]byte(s))
+	if err != nil {
+		return nil, fmt.Errorf("error skipping issue bundle: %w", err)
+	}
+
 	return s, nil
+}
+
+// skipIssueBundle consumes the issuance bundle from a v6 transaction.
+// Format: CompactSize(issuer_len) || issuer_key || CompactSize(n_actions) || actions... || authorization
+func (tx *Transaction) skipIssueBundle(data []byte) ([]byte, error) {
+	s := bytestring.String(data)
+	var issuerLen int
+	if !s.ReadCompactSize(&issuerLen) {
+		return nil, errors.New("could not read issue bundle issuer length")
+	}
+	if issuerLen == 0 {
+		var nActions int
+		if !s.ReadCompactSize(&nActions) {
+			return nil, errors.New("could not read issue bundle nActions")
+		}
+		// empty bundle — nothing more to skip
+		return []byte(s), nil
+	}
+	// Skip issuer key
+	if !s.Skip(issuerLen) {
+		return nil, errors.New("could not skip issue bundle issuer key")
+	}
+	var nActions int
+	if !s.ReadCompactSize(&nActions) {
+		return nil, errors.New("could not read issue bundle action count")
+	}
+	for i := 0; i < nActions; i++ {
+		// asset_desc_hash (32 bytes)
+		if !s.Skip(32) {
+			return nil, errors.New("could not skip issue action asset_desc_hash")
+		}
+		var nNotes int
+		if !s.ReadCompactSize(&nNotes) {
+			return nil, errors.New("could not read issue action note count")
+		}
+		// Each note: 43 (recipient) + 8 (value) + 32 (rho) + 32 (rseed) = 115 bytes
+		if !s.Skip(nNotes * 115) {
+			return nil, errors.New("could not skip issue action notes")
+		}
+		// flags (1 byte)
+		if !s.Skip(1) {
+			return nil, errors.New("could not skip issue action flags")
+		}
+	}
+	// sighash_info (CompactSize-prefixed)
+	var sighashLen int
+	if !s.ReadCompactSize(&sighashLen) {
+		return nil, errors.New("could not read issue authorization sighash length")
+	}
+	if !s.Skip(sighashLen) {
+		return nil, errors.New("could not skip issue authorization sighash")
+	}
+	// signature (CompactSize-prefixed)
+	var sigLen int
+	if !s.ReadCompactSize(&sigLen) {
+		return nil, errors.New("could not read issue authorization sig length")
+	}
+	if !s.Skip(sigLen) {
+		return nil, errors.New("could not skip issue authorization sig")
+	}
+	return []byte(s), nil
 }
 
 // The logic in the following four functions is copied from
@@ -830,6 +928,22 @@ func (tx *Transaction) isZip225V5() bool {
 	return tx.fOverwintered &&
 		tx.nVersionGroupID == ZIP225_VERSION_GROUP_ID &&
 		tx.version == ZIP225_TX_VERSION
+}
+
+// skipVersionedSignature consumes a versioned signature consisting of:
+// CompactSize(sighash_len) || sighash_data || 64-byte signature
+func skipVersionedSignature(s *bytestring.String) bool {
+	var sighashLen int
+	if !s.ReadCompactSize(&sighashLen) {
+		return false
+	}
+	if !s.Skip(sighashLen) {
+		return false
+	}
+	if !s.Skip(64) {
+		return false
+	}
+	return true
 }
 
 func (tx *Transaction) isZip230V6() bool {

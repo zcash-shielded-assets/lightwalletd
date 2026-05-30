@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/zcash/lightwalletd/hash32"
 	"github.com/zcash/lightwalletd/parser/internal/bytestring"
@@ -157,5 +158,12 @@ func (b *Block) ParseFromSlice(data []byte) (rest []byte, err error) {
 	}
 	b.hdr = hdr
 	b.vtx = vtx
+	if len(data) > 0 {
+		n := len(data)
+		if n > 32 {
+			n = 32
+		}
+		log.Printf("Block parser: %d bytes remaining after %d transactions: %x", len(data), txCount, data[:n])
+	}
 	return data, nil
 }
