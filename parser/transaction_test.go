@@ -33,17 +33,33 @@ func (r *TxTestData) UnmarshalJSON(p []byte) error {
 	if err := json.Unmarshal(p, &t); err != nil {
 		return err
 	}
-	r.Tx = t[0].(string)
-	r.Txid = t[1].(string)
-	r.Version = int(t[2].(float64))
-	r.NVersionGroupId = int(t[3].(float64))
-	r.NConsensusBranchId = int(t[4].(float64))
-	r.Tx_in_count = int(t[7].(float64))
-	r.Tx_out_count = int(t[8].(float64))
-	r.NSpendsSapling = int(t[9].(float64))
-	r.NoutputsSapling = int(t[10].(float64))
-	r.NActionsOrchard = int(t[14].(float64))
+	// Skip comment rows (they have fewer elements than expected)
+	if len(t) < 15 {
+		return nil
+	}
+	// Handle null values for optional fields
+	if t[0] != nil {
+		r.Tx = t[0].(string)
+	}
+	if t[1] != nil {
+		r.Txid = t[1].(string)
+	}
+	r.Version = int(toFloat64(t[2]))
+	r.NVersionGroupId = int(toFloat64(t[3]))
+	r.NConsensusBranchId = int(toFloat64(t[4]))
+	r.Tx_in_count = int(toFloat64(t[7]))
+	r.Tx_out_count = int(toFloat64(t[8]))
+	r.NSpendsSapling = int(toFloat64(t[9]))
+	r.NoutputsSapling = int(toFloat64(t[10]))
+	r.NActionsOrchard = int(toFloat64(t[14]))
 	return nil
+}
+
+func toFloat64(v any) float64 {
+	if v == nil {
+		return 0
+	}
+	return v.(float64)
 }
 
 func TestV5TransactionParser(t *testing.T) {
@@ -110,6 +126,84 @@ func TestV5TransactionParser(t *testing.T) {
 		}
 		if len(tx.orchardActions) != int(txtestdata.NActionsOrchard) {
 			t.Fatal("NActionsOrchard miscompare")
+		}
+		// Verify compact ciphertext size for v5 (should be 52 bytes)
+		for _, action := range tx.orchardActions {
+			c := action.ToCompact()
+			if len(c.Ciphertext) != 52 {
+				t.Fatalf("v5 compact ciphertext should be 52 bytes, got %d", len(c.Ciphertext))
+			}
+		}
+	}
+}
+
+func TestV6TransactionParser(t *testing.T) {
+	s, err := os.ReadFile("../testdata/tx_v6.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var testdata []json.RawMessage
+	err = json.Unmarshal(s, &testdata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(testdata) < 3 {
+		t.Fatal("tx_v6.json has too few lines")
+	}
+	testdata = testdata[2:]
+	if len(testdata) == 0 {
+		t.Skip("no v6 test vectors available yet")
+	}
+	for _, onetx := range testdata {
+		var txtestdata TxTestData
+
+		err = json.Unmarshal(onetx, &txtestdata)
+		if err != nil {
+			// Skip comment rows (they're JSON strings, not arrays)
+			continue
+		}
+		t.Logf("txid %s", txtestdata.Txid)
+		rawTxData, _ := hex.DecodeString(txtestdata.Tx)
+
+		tx := NewTransaction()
+		rest, err := tx.ParseFromSlice(rawTxData)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if len(rest) != 0 {
+			t.Fatalf("Test did not consume entire buffer, %d remaining", len(rest))
+		}
+		if tx.version != uint32(txtestdata.Version) {
+			t.Fatal("version miscompare")
+		}
+		if tx.nVersionGroupID != uint32(txtestdata.NVersionGroupId) {
+			t.Fatal("nVersionGroupId miscompare")
+		}
+		if tx.consensusBranchID != uint32(txtestdata.NConsensusBranchId) {
+			t.Fatal("consensusBranchID miscompare")
+		}
+		if len(tx.transparentInputs) != int(txtestdata.Tx_in_count) {
+			t.Fatal("tx_in_count miscompare")
+		}
+		if len(tx.transparentOutputs) != int(txtestdata.Tx_out_count) {
+			t.Fatal("tx_out_count miscompare")
+		}
+		if len(tx.shieldedSpends) != int(txtestdata.NSpendsSapling) {
+			t.Fatal("NSpendsSapling miscompare")
+		}
+		if len(tx.shieldedOutputs) != int(txtestdata.NoutputsSapling) {
+			t.Fatal("NOutputsSapling miscompare")
+		}
+		if len(tx.orchardActions) != int(txtestdata.NActionsOrchard) {
+			t.Fatal("NActionsOrchard miscompare")
+		}
+		// Verify compact ciphertext size for v6/ZSA (should be 84 bytes)
+		for _, action := range tx.orchardActions {
+			c := action.ToCompact()
+			if len(c.Ciphertext) != 84 {
+				t.Fatalf("v6 compact ciphertext should be 84 bytes, got %d", len(c.Ciphertext))
+			}
 		}
 	}
 }

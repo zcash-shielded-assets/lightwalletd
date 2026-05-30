@@ -1,0 +1,4 @@
+[
+    ["v6 transaction test vectors for ZSA (ZIP-230)."],
+    ["tx, txid, version, nVersionGroupId, nConsensusBranchId, lock_time, nExpiryHeight, tx_in_count, tx_out_count, nSpendsSapling, nOutputsSapling, valueBalanceSapling, anchorSapling, bindingSigSapling, nActionsOrchard, flagsOrchard, valueBalanceOrchard, anchorOrchard, proofsOrchard, bindingSigOrchard"]
+]

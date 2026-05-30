@@ -549,7 +549,7 @@ type CompactOrchardAction struct {
 	Nullifier     []byte                 `protobuf:"bytes,1,opt,name=nullifier,proto3" json:"nullifier,omitempty"`       // [32] The nullifier of the input note
 	Cmx           []byte                 `protobuf:"bytes,2,opt,name=cmx,proto3" json:"cmx,omitempty"`                   // [32] The x-coordinate of the note commitment for the output note
 	EphemeralKey  []byte                 `protobuf:"bytes,3,opt,name=ephemeralKey,proto3" json:"ephemeralKey,omitempty"` // [32] An encoding of an ephemeral Pallas public key
-	Ciphertext    []byte                 `protobuf:"bytes,4,opt,name=ciphertext,proto3" json:"ciphertext,omitempty"`     // [52] The first 52 bytes of the encCiphertext field
+	Ciphertext    []byte                 `protobuf:"bytes,4,opt,name=ciphertext,proto3" json:"ciphertext,omitempty"`     // Compact encCiphertext prefix (52 bytes v5, 84 bytes v6/ZSA)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
