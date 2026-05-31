@@ -30,7 +30,9 @@ type rawTransaction struct {
 	//joinSplitPubKey     []byte
 	//joinSplitSig        []byte
 	//bindingSigSapling   []byte
-	orchardActions []action
+	orchardActions   []action
+	issuanceActions []issuanceAction
+	issuanceKey     []byte // 33 bytes: algorithm_byte + x-only pubkey
 }
 
 // Txin format as described in https://en.bitcoin.it/wiki/Transaction
@@ -396,6 +398,41 @@ func (tx *Transaction) Bytes() []byte {
 	return tx.rawBytes
 }
 
+type issuanceAction struct {
+	assetDescHash []byte // [32] BLAKE2b-256 hash of the asset description
+	ik            []byte // [33] Issuer Validating Key (algorithm byte + x-only pubkey)
+	notes         []issueNote
+	flags         byte
+}
+
+type issueNote struct {
+	recipient []byte // 43 bytes
+	value     uint64
+	rho       []byte // 32 bytes
+	rseed     []byte // 32 bytes
+}
+
+func (ia *issuanceAction) ToCompact() *walletrpc.CompactIssuance {
+	var issuedAmount uint64
+	notes := make([]*walletrpc.CompactIssueNote, len(ia.notes))
+	for i, n := range ia.notes {
+		issuedAmount += n.value
+		notes[i] = &walletrpc.CompactIssueNote{
+			Recipient: n.recipient,
+			Value:     n.value,
+			Rho:       n.rho,
+			Rseed:     n.rseed,
+		}
+	}
+	return &walletrpc.CompactIssuance{
+		AssetDescHash: ia.assetDescHash,
+		Finalize:      ia.flags&1 != 0,
+		Ik:            ia.ik,
+		IssuedAmount:  issuedAmount,
+		Notes:         notes,
+	}
+}
+
 // SaplingOutputsCount returns the number of Sapling outputs in the transaction.
 func (tx *Transaction) SaplingOutputsCount() int {
 	return len(tx.shieldedOutputs)
@@ -417,11 +454,12 @@ func (tx *Transaction) ToCompact(index int) *walletrpc.CompactTx {
 		Index: uint64(index), // index is contextual
 		Txid:  hash32.ToSlice(tx.GetEncodableHash()),
 		//Fee:     0, // TODO: calculate fees
-		Spends:  make([]*walletrpc.CompactSaplingSpend, len(tx.shieldedSpends)),
-		Outputs: make([]*walletrpc.CompactSaplingOutput, len(tx.shieldedOutputs)),
-		Actions: make([]*walletrpc.CompactOrchardAction, len(tx.orchardActions)),
-		Vin:     make([]*walletrpc.CompactTxIn, vinLen),
-		Vout:    make([]*walletrpc.TxOut, len(tx.transparentOutputs)),
+		Spends:    make([]*walletrpc.CompactSaplingSpend, len(tx.shieldedSpends)),
+		Outputs:   make([]*walletrpc.CompactSaplingOutput, len(tx.shieldedOutputs)),
+		Actions:   make([]*walletrpc.CompactOrchardAction, len(tx.orchardActions)),
+		Issuances: make([]*walletrpc.CompactIssuance, len(tx.issuanceActions)),
+		Vin:       make([]*walletrpc.CompactTxIn, vinLen),
+		Vout:      make([]*walletrpc.TxOut, len(tx.transparentOutputs)),
 	}
 	for i, spend := range tx.shieldedSpends {
 		ctx.Spends[i] = spend.ToCompact()
@@ -431,6 +469,9 @@ func (tx *Transaction) ToCompact(index int) *walletrpc.CompactTx {
 	}
 	for i, a := range tx.orchardActions {
 		ctx.Actions[i] = a.ToCompact()
+	}
+	for i, ia := range tx.issuanceActions {
+		ctx.Issuances[i] = ia.ToCompact()
 	}
 	if vinLen > 0 {
 		for i, tinput := range tx.transparentInputs {
@@ -579,7 +620,7 @@ func (tx *Transaction) parseV5(data []byte) ([]byte, error) {
 		return nil, errors.New("could not skip vSpendProofsSapling")
 	}
 		for i := 0; i < spendCount; i++ {
-			if !skipVersionedSignature(&s) {
+			if !s.Skip(64) {
 				return nil, errors.New("could not skip vSpendAuthSigSapling")
 			}
 		}
@@ -587,7 +628,7 @@ func (tx *Transaction) parseV5(data []byte) ([]byte, error) {
 			return nil, errors.New("could not skip vOutputProofsSapling")
 		}
 		if spendCount+outputCount > 0 {
-			if !skipVersionedSignature(&s) {
+			if !s.Skip(64) {
 				return nil, errors.New("could not skip bindingSigSapling")
 			}
 		}
@@ -793,20 +834,9 @@ func (tx *Transaction) parseV6(data []byte) ([]byte, error) {
 			return nil, errors.New("could not skip proofsOrchard")
 		}
 
-		// 8. vSpendAuthSigsOrchard (versioned sigs)
-		var sigCount int
-		if !s.ReadCompactSize(&sigCount) {
-			return nil, errors.New("could not read vSpendAuthSigsOrchard count")
-		}
-		for i := 0; i < sigCount; i++ {
-			var sigSighashLen int
-			if !s.ReadCompactSize(&sigSighashLen) {
-				return nil, errors.New("could not read spendAuthSig sighash type")
-			}
-			if !s.Skip(sigSighashLen) {
-				return nil, errors.New("could not skip spendAuthSig sighash data")
-			}
-			if !s.Skip(64) {
+		// 8. vSpendAuthSigsOrchard (versioned sigs, one per action)
+		for i := 0; i < actionsCount; i++ {
+			if !skipVersionedSignature(&s) {
 				return nil, errors.New("could not skip spendAuthSig")
 			}
 		}
@@ -830,7 +860,7 @@ func (tx *Transaction) parseV6(data []byte) ([]byte, error) {
 	}
 
 	// --- v6 Issue bundle (NU7) ---
-	s, err = tx.skipIssueBundle([]byte(s))
+	s, err = tx.parseIssueBundle([]byte(s))
 	if err != nil {
 		return nil, fmt.Errorf("error skipping issue bundle: %w", err)
 	}
@@ -838,9 +868,9 @@ func (tx *Transaction) parseV6(data []byte) ([]byte, error) {
 	return s, nil
 }
 
-// skipIssueBundle consumes the issuance bundle from a v6 transaction.
+// parseIssueBundle parses the issuance bundle from a v6 transaction.
 // Format: CompactSize(issuer_len) || issuer_key || CompactSize(n_actions) || actions... || authorization
-func (tx *Transaction) skipIssueBundle(data []byte) ([]byte, error) {
+func (tx *Transaction) parseIssueBundle(data []byte) ([]byte, error) {
 	s := bytestring.String(data)
 	var issuerLen int
 	if !s.ReadCompactSize(&issuerLen) {
@@ -851,33 +881,57 @@ func (tx *Transaction) skipIssueBundle(data []byte) ([]byte, error) {
 		if !s.ReadCompactSize(&nActions) {
 			return nil, errors.New("could not read issue bundle nActions")
 		}
-		// empty bundle — nothing more to skip
+		// empty bundle — nothing to parse
 		return []byte(s), nil
 	}
-	// Skip issuer key
-	if !s.Skip(issuerLen) {
-		return nil, errors.New("could not skip issue bundle issuer key")
+	// Read issuer key
+	tx.issuanceKey = make([]byte, issuerLen)
+	if !s.ReadBytes(&tx.issuanceKey, issuerLen) {
+		return nil, errors.New("could not read issue bundle issuer key")
 	}
 	var nActions int
 	if !s.ReadCompactSize(&nActions) {
 		return nil, errors.New("could not read issue bundle action count")
 	}
+	tx.issuanceActions = make([]issuanceAction, nActions)
 	for i := 0; i < nActions; i++ {
+		action := &tx.issuanceActions[i]
+		action.ik = tx.issuanceKey
 		// asset_desc_hash (32 bytes)
-		if !s.Skip(32) {
-			return nil, errors.New("could not skip issue action asset_desc_hash")
+		action.assetDescHash = make([]byte, 32)
+		if !s.ReadBytes(&action.assetDescHash, 32) {
+			return nil, errors.New("could not read issue action asset_desc_hash")
 		}
 		var nNotes int
 		if !s.ReadCompactSize(&nNotes) {
 			return nil, errors.New("could not read issue action note count")
 		}
-		// Each note: 43 (recipient) + 8 (value) + 32 (rho) + 32 (rseed) = 115 bytes
-		if !s.Skip(nNotes * 115) {
-			return nil, errors.New("could not skip issue action notes")
+		action.notes = make([]issueNote, nNotes)
+		for j := 0; j < nNotes; j++ {
+			note := &action.notes[j]
+			// recipient (43 bytes)
+			note.recipient = make([]byte, 43)
+			if !s.ReadBytes(&note.recipient, 43) {
+				return nil, errors.New("could not read issue note recipient")
+			}
+			// value (8 bytes, LE)
+			if !s.ReadUint64(&note.value) {
+				return nil, errors.New("could not read issue note value")
+			}
+			// rho (32 bytes)
+			note.rho = make([]byte, 32)
+			if !s.ReadBytes(&note.rho, 32) {
+				return nil, errors.New("could not read issue note rho")
+			}
+			// rseed (32 bytes)
+			note.rseed = make([]byte, 32)
+			if !s.ReadBytes(&note.rseed, 32) {
+				return nil, errors.New("could not read issue note rseed")
+			}
 		}
 		// flags (1 byte)
-		if !s.Skip(1) {
-			return nil, errors.New("could not skip issue action flags")
+		if !s.ReadByte(&action.flags) {
+			return nil, errors.New("could not read issue action flags")
 		}
 	}
 	// sighash_info (CompactSize-prefixed)

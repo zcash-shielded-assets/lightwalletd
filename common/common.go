@@ -538,12 +538,14 @@ func FilterTxPool(tx *walletrpc.CompactTx, poolTypes []walletrpc.PoolType) *wall
 	}
 	if slices.Contains(poolTypes, walletrpc.PoolType_ORCHARD) {
 		r.Actions = tx.Actions
+		r.Issuances = tx.Issuances
 	}
 	if len(r.Vin) > 0 ||
 		len(r.Vout) > 0 ||
 		len(r.Spends) > 0 ||
 		len(r.Outputs) > 0 ||
-		len(r.Actions) > 0 {
+		len(r.Actions) > 0 ||
+		len(r.Issuances) > 0 {
 		return r
 	}
 	return nil
