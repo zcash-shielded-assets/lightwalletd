@@ -28,10 +28,10 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/zcash/lightwalletd/common"
-	"github.com/zcash/lightwalletd/common/logging"
-	"github.com/zcash/lightwalletd/frontend"
-	"github.com/zcash/lightwalletd/walletrpc"
+	"github.com/zcash-shielded-assets/lightwalletd/common"
+	"github.com/zcash-shielded-assets/lightwalletd/common/logging"
+	"github.com/zcash-shielded-assets/lightwalletd/frontend"
+	"github.com/zcash-shielded-assets/lightwalletd/walletrpc"
 )
 
 var cfgFile string

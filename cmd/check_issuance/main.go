@@ -8,7 +8,7 @@ import (
 	"log"
 	"time"
 
-	pb "github.com/zcash/lightwalletd/walletrpc"
+	pb "github.com/zcash-shielded-assets/lightwalletd/walletrpc"
 	"google.golang.org/grpc"
 )
 

@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/zcash/lightwalletd/hash32"
-	"github.com/zcash/lightwalletd/parser/internal/bytestring"
-	"github.com/zcash/lightwalletd/walletrpc"
+	"github.com/zcash-shielded-assets/lightwalletd/hash32"
+	"github.com/zcash-shielded-assets/lightwalletd/parser/internal/bytestring"
+	"github.com/zcash-shielded-assets/lightwalletd/walletrpc"
 )
 
 // Block represents a full block (not a compact block).

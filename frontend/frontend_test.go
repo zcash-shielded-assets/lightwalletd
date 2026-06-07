@@ -16,8 +16,8 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
-	"github.com/zcash/lightwalletd/common"
-	"github.com/zcash/lightwalletd/walletrpc"
+	"github.com/zcash-shielded-assets/lightwalletd/common"
+	"github.com/zcash-shielded-assets/lightwalletd/walletrpc"
 )
 
 var (

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zcash/lightwalletd/walletrpc"
+	"github.com/zcash-shielded-assets/lightwalletd/walletrpc"
 )
 
 type txid string

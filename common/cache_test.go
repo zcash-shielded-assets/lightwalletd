@@ -9,9 +9,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/zcash/lightwalletd/hash32"
-	"github.com/zcash/lightwalletd/parser"
-	"github.com/zcash/lightwalletd/walletrpc"
+	"github.com/zcash-shielded-assets/lightwalletd/hash32"
+	"github.com/zcash-shielded-assets/lightwalletd/parser"
+	"github.com/zcash-shielded-assets/lightwalletd/walletrpc"
 )
 
 var compacts []*walletrpc.CompactBlock

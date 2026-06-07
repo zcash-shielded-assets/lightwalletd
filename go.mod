@@ -1,4 +1,4 @@
-module github.com/zcash/lightwalletd
+module github.com/zcash-shielded-assets/lightwalletd
 
 go 1.24.0
 

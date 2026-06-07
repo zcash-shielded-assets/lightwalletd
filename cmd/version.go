@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/zcash/lightwalletd/common"
+	"github.com/zcash-shielded-assets/lightwalletd/common"
 )
 
 // versionCmd represents the version command

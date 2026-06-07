@@ -20,10 +20,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/zcash/lightwalletd/common"
-	"github.com/zcash/lightwalletd/hash32"
-	"github.com/zcash/lightwalletd/parser"
-	"github.com/zcash/lightwalletd/walletrpc"
+	"github.com/zcash-shielded-assets/lightwalletd/common"
+	"github.com/zcash-shielded-assets/lightwalletd/hash32"
+	"github.com/zcash-shielded-assets/lightwalletd/parser"
+	"github.com/zcash-shielded-assets/lightwalletd/walletrpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

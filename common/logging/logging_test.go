@@ -11,7 +11,7 @@ import (
 
 	"errors"
 	"github.com/sirupsen/logrus"
-	"github.com/zcash/lightwalletd/common"
+	"github.com/zcash-shielded-assets/lightwalletd/common"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 )

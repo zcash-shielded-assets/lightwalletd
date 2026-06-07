@@ -9,9 +9,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/zcash/lightwalletd/hash32"
-	"github.com/zcash/lightwalletd/parser/internal/bytestring"
-	"github.com/zcash/lightwalletd/walletrpc"
+	"github.com/zcash-shielded-assets/lightwalletd/hash32"
+	"github.com/zcash-shielded-assets/lightwalletd/parser/internal/bytestring"
+	"github.com/zcash-shielded-assets/lightwalletd/walletrpc"
 )
 
 type rawTransaction struct {

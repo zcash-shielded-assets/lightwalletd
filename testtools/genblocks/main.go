@@ -34,8 +34,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/zcash/lightwalletd/hash32"
-	"github.com/zcash/lightwalletd/parser"
+	"github.com/zcash-shielded-assets/lightwalletd/hash32"
+	"github.com/zcash-shielded-assets/lightwalletd/parser"
 )
 
 type options struct {

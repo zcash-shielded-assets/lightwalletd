@@ -12,7 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/btcsuite/btcd/rpcclient"
-	"github.com/zcash/lightwalletd/common"
+	"github.com/zcash-shielded-assets/lightwalletd/common"
 	ini "gopkg.in/ini.v1"
 )
 
