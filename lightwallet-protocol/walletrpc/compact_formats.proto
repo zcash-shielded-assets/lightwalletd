@@ -79,7 +79,8 @@ message CompactTx {
     repeated TxOut vout = 8;
 
     // ZSA issuance actions (ZIP-227) present in V6+ transactions.
-    repeated CompactIssuance issuances = 9;
+    reserved 9;
+    repeated CompactIssuance issuances = 10;
 }
 
 // A compact representation of a transparent transaction input.
